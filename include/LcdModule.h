@@ -30,7 +30,6 @@ void LcdModule::print(const String& text) {
 }
 
 void LcdModule::printAt(const String& text , int row , int col) {
-    lcd.clear();
     lcd.setCursor(col, row);
     lcd.print(text);
 }
