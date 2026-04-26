@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <LiquidCrystal_I2C.h>
 #include "WifiManagerModule.h"
 #include "ConfigManager.h"
 #include "MqttModule.h"
@@ -14,21 +15,28 @@ WifiManagerModule wifi;
 MqttModule mqtt;
 ConfigManager config;
 PzemModule pzem(Serial1, 20, 21); // Sử dụng Serial1, chân RX:20, TX:21
-LcdModule lcd(0x27, 16, 2); // Địa chỉ I2C: 0x27, số cột: 16, số hàng: 2
+
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Địa chỉ I2C: 0x27, số cột: 16, số hàng: 2
+LcdModule lcdModule(lcd);
 
 // ================= TASK 1: ĐỌC PZEM (Core 1 - Ưu tiên 2) =================
-void pzemTask(void *pv) {
-    pzem.begin(); 
+void pzemTask(void *pv)
+{
+    pzem.begin();
     SystemMessage msg;
     msg.type = TYPE_PZEM;
 
-    for (;;) {
+    for (;;)
+    {
         PzemData pzemRaw = pzem.readAll();
-        if (pzemRaw.isValid) {
+        if (pzemRaw.isValid)
+        {
             msg.pzem = pzemRaw;
             // Đẩy dữ liệu vào hàng đợi, chờ tối đa 100ms nếu hàng đợi đầy
             xQueueSend(dataQueue, &msg, pdMS_TO_TICKS(100));
-        } else {
+        }
+        else
+        {
             Serial.println("[PZEM] Read Error!");
         }
         // PZEM v3 phản hồi ~200ms, đọc mỗi 3s là tối ưu cho gia đình
@@ -37,14 +45,16 @@ void pzemTask(void *pv) {
 }
 
 // ================= TASK 2: ĐỌC CẢM BIẾN MÔI TRƯỜNG (Core 1 - Ưu tiên 1) =================
-void sensorTask(void *pv) {
+void sensorTask(void *pv)
+{
     SystemMessage msg;
     msg.type = TYPE_ENV_SENSOR;
 
-    for (;;) {
+    for (;;)
+    {
         // Giả lập hoặc đọc dữ liệu từ DHT/BME
         msg.env.temp = random(200, 350) / 10.0;
-        msg.env.hum  = random(400, 800) / 10.0;
+        msg.env.hum = random(400, 800) / 10.0;
 
         xQueueSend(dataQueue, &msg, pdMS_TO_TICKS(100));
         vTaskDelay(pdMS_TO_TICKS(5000));
@@ -52,64 +62,93 @@ void sensorTask(void *pv) {
 }
 
 // ================= TASK 3: MQTT & WIFI DISPATCHER (Core 0 - Ưu tiên 1) =================
-void mqttTask(void *pv) {
+void mqttTask(void *pv)
+{
     SystemMessage rxMsg;
-    Serial.println("[MQTT] Dispatcher Task started on Core 0");
+    char buf[17];
 
-    for (;;) {
-        // Task ngủ hoàn toàn (Blocked) cho đến khi có dữ liệu mới trong Queue
-        if (xQueueReceive(dataQueue, &rxMsg, portMAX_DELAY)) {
-            
-            // Chỉ xử lý khi WiFi đã kết nối
-            if (wifi.isConnected()) {
-                if (mqtt.connect()) {
-                    mqtt.loop(); 
+    Serial.println("[MQTT] Dispatcher Task started");
 
-                    // Phân loại gói tin dựa trên DataType đã chuẩn hóa
-                    switch (rxMsg.type) {
-                        case TYPE_PZEM:
-                            mqtt.publishPzemData(rxMsg.pzem);
-                            lcd.printAt("PZEM: " + String(rxMsg.pzem.voltage) + "V", 0, 0);
-                            Serial.printf("[MQTT] Published PZEM: %.1fV\n", rxMsg.pzem.voltage);
-                            break;
+    for (;;)
+    {
+        if (!xQueueReceive(dataQueue, &rxMsg, portMAX_DELAY))
+            continue;
 
-                        case TYPE_ENV_SENSOR:
-                            mqtt.publishData(rxMsg.env.temp, rxMsg.env.hum);
-                            lcd.printAt("T:" + String(rxMsg.env.temp) + "C H:" + String(rxMsg.env.hum) + "%", 1, 0);
-                            Serial.printf("[MQTT] Published Env: T:%.1f, H:%.1f\n", rxMsg.env.temp, rxMsg.env.hum);
-                            break;
+        if (wifi.isConnected())
+        {
+            // giữ nguyên logic cũ: connect mỗi lần
+            if (mqtt.connect())
+            {
+                mqtt.loop();
 
-                        case TYPE_RF_REMOTE:
-                            Serial.printf("[MQTT] RF Data: %s\n", rxMsg.rf.code);
-                            lcd.printAt("RF: " + String(rxMsg.rf.code), 0, 0);
-                            Serial.printf("[MQTT] Published RF: %s\n", rxMsg.rf.code);
-                            break;
-                    }
+                switch (rxMsg.type)
+                {
+                case TYPE_PZEM:
+                {
+                    mqtt.publishPzemData(rxMsg.pzem);
+
+                    snprintf(buf, sizeof(buf), "P:%.1fW", rxMsg.pzem.power);
+                    lcdModule.printAt(buf, 0, 0);
+
+                    Serial.printf("[MQTT] PZEM: %.1fV\n", rxMsg.pzem.voltage);
+                    break;
                 }
-            } else {
-                Serial.println("[MQTT] WiFi Disconnected. Packet dropped.");
+
+                case TYPE_ENV_SENSOR:
+                {
+                    mqtt.publishData(rxMsg.env.temp, rxMsg.env.hum);
+
+                    snprintf(buf, sizeof(buf), "T:%.1fC H:%.1f%%",
+                             rxMsg.env.temp, rxMsg.env.hum);
+                    lcdModule.printAt(buf, 1, 0);
+
+                    Serial.printf("[MQTT] Env: T:%.1f H:%.1f\n",
+                                  rxMsg.env.temp, rxMsg.env.hum);
+                    break;
+                }
+
+                case TYPE_RF_REMOTE:
+                {
+                    snprintf(buf, sizeof(buf), "RF:%s", rxMsg.rf.code);
+                    lcdModule.printAt(buf, 0, 0);
+
+                    Serial.printf("[MQTT] RF: %s\n", rxMsg.rf.code);
+                    break;
+                }
+
+                default:
+                    break;
+                }
             }
+        }
+        else
+        {
+            Serial.println("[MQTT] WiFi Disconnected. Packet dropped.");
         }
     }
 }
 
 // ================= SETUP =================
-void setup() {
+void setup()
+{
     Serial.begin(115200);
     pinMode(2, OUTPUT); // LED tích hợp để test điều khiển từ MQTT
     // Tạo Queue chứa được 15 gói tin SystemMessage
     // Sử dụng kích thước của struct đã tối ưu bằng Union
     dataQueue = xQueueCreate(15, sizeof(SystemMessage));
-    
-    if (dataQueue == NULL) {
+
+    if (dataQueue == NULL)
+    {
         Serial.println("Failed to create Queue!");
-        while (1); 
+        while (1)
+            ;
     }
 
     // Khởi tạo các dịch vụ nền
     config.begin();
-    wifi.begin(config);   
-    mqtt.setup(config);   
+    wifi.begin(config);
+    mqtt.setup(config);
+    lcdModule.begin();
 
     // Task xử lý phần cứng (PZEM và Sensor) chạy trên Core 1
     xTaskCreatePinnedToCore(pzemTask, "pzemTask", 3072, NULL, 2, NULL, 1);
@@ -119,7 +158,8 @@ void setup() {
     xTaskCreatePinnedToCore(mqttTask, "mqttTask", 5120, NULL, 1, NULL, 0);
 }
 
-void loop() {
+void loop()
+{
     // Xóa Task loop mặc định để giải phóng tài nguyên cho các Task RTOS
-    vTaskDelete(NULL); 
+    vTaskDelete(NULL);
 }
