@@ -1,5 +1,5 @@
-#ifndef LCD_MODULE_H
-#define LCD_MODULE_H    
+#pragma once
+
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>  
 class LcdModule {
@@ -36,4 +36,3 @@ void LcdModule::printAt(const String& text , int row , int col) {
 void LcdModule::clear() {
     lcd.clear();
 }       
-#endif // LCD_MODULE_H  

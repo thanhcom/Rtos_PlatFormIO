@@ -1,5 +1,4 @@
-#ifndef DATA_MODELS_H
-#define DATA_MODELS_H
+#pragma once
 
 #include <Arduino.h>
 
@@ -52,5 +51,3 @@ struct SystemState {
     PzemData lastPzem;
     EnvData  lastEnv;
 };
-
-#endif

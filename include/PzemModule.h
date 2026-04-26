@@ -1,5 +1,4 @@
-#ifndef PZEM_MODULE_H
-#define PZEM_MODULE_H
+#pragma once
 
 #include <PZEM004Tv30.h>
 #include <HardwareSerial.h>
@@ -68,5 +67,3 @@ public:
         return _pzem.setAddress(addr);
     }
 };
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef MQTT_MODULE_H
-#define MQTT_MODULE_H
+#pragma once
 
 #include <WiFi.h>
 #include <PubSubClient.h>
@@ -116,5 +115,3 @@ public:
         client.loop();
     }
 };
-
-#endif

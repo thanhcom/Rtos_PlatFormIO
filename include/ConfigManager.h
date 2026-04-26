@@ -1,5 +1,4 @@
-#ifndef CONFIG_MANAGER_H
-#define CONFIG_MANAGER_H
+#pragma once
 
 #include <Preferences.h>
 
@@ -43,5 +42,3 @@ public:
     _prefs.clear();
     }
 };
-
-#endif

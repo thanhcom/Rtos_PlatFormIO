@@ -1,5 +1,4 @@
-#ifndef WIFI_MANAGER_MODULE_H
-#define WIFI_MANAGER_MODULE_H
+#pragma once
 
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -74,5 +73,3 @@ public:
         }
     }
 };
-
-#endif
