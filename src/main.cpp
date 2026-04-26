@@ -4,6 +4,7 @@
 #include "MqttModule.h"
 #include "DataModels.h"
 #include "PzemModule.h"
+#include "LcdModule.h"
 
 // Khai báo Queue Handle để chuyển SystemMessage giữa các Task
 QueueHandle_t dataQueue;
@@ -13,6 +14,7 @@ WifiManagerModule wifi;
 MqttModule mqtt;
 ConfigManager config;
 PzemModule pzem(Serial1, 20, 21); // Sử dụng Serial1, chân RX:20, TX:21
+LcdModule lcd(0x27, 16, 2); // Địa chỉ I2C: 0x27, số cột: 16, số hàng: 2
 
 // ================= TASK 1: ĐỌC PZEM (Core 1 - Ưu tiên 2) =================
 void pzemTask(void *pv) {
@@ -67,16 +69,20 @@ void mqttTask(void *pv) {
                     switch (rxMsg.type) {
                         case TYPE_PZEM:
                             mqtt.publishPzemData(rxMsg.pzem);
+                            lcd.printAt("PZEM: " + String(rxMsg.pzem.voltage) + "V", 0, 0);
                             Serial.printf("[MQTT] Published PZEM: %.1fV\n", rxMsg.pzem.voltage);
                             break;
 
                         case TYPE_ENV_SENSOR:
                             mqtt.publishData(rxMsg.env.temp, rxMsg.env.hum);
+                            lcd.printAt("T:" + String(rxMsg.env.temp) + "C H:" + String(rxMsg.env.hum) + "%", 1, 0);
                             Serial.printf("[MQTT] Published Env: T:%.1f, H:%.1f\n", rxMsg.env.temp, rxMsg.env.hum);
                             break;
 
                         case TYPE_RF_REMOTE:
                             Serial.printf("[MQTT] RF Data: %s\n", rxMsg.rf.code);
+                            lcd.printAt("RF: " + String(rxMsg.rf.code), 0, 0);
+                            Serial.printf("[MQTT] Published RF: %s\n", rxMsg.rf.code);
                             break;
                     }
                 }
