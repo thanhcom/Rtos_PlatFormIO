@@ -5,7 +5,7 @@
 #include "MqttModule.h"
 #include "DataModels.h"
 #include "PzemModule.h"
-//#include "LcdModule.h"
+// #include "LcdModule.h"
 #include "HttpClientModule.h"
 
 // Khai báo Queue Handle để chuyển SystemMessage giữa các Task
@@ -17,19 +17,43 @@ MqttModule mqtt;
 ConfigManager config;
 PzemModule pzem(Serial1, 20, 21); // Sử dụng Serial1, chân RX:20, TX:21
 
-//LiquidCrystal_I2C lcd(0x27, 16, 2); // Địa chỉ I2C: 0x27, số cột: 16, số hàng: 2
-//LcdModule lcdModule(lcd);
+// LiquidCrystal_I2C lcd(0x27, 16, 2); // Địa chỉ I2C: 0x27, số cột: 16, số hàng: 2
+// LcdModule lcdModule(lcd);
 
 HttpClientModule http;
 
 // Hàm callback này sẽ được module gọi khi nhận xong data của HTTP Request
-void myDataHandler(const std::string& response, int statusCode) {
+void myDataHandler(const std::string &response, int statusCode)
+{
     Serial.println("\n--- KẾT QUẢ HTTP ---");
-    if (statusCode == 200) {
+    if (statusCode == 200)
+    {
         Serial.printf("Dữ liệu: %s\n", response.c_str());
-    } else {
+    }
+    else
+    {
         Serial.printf("Lỗi mẹ rồi! Code: %d\n", statusCode);
     }
+}
+// Hàm callback này sẽ được MQTT Module gọi khi có tin nhắn mới (nếu bạn muốn xử lý riêng ở đây thay vì callback mặc định trong MqttModule)
+void onMqttMessage(char *topic, byte *payload, unsigned int length)
+{
+    Serial.print("\n[Main Callback] Topic: ");
+    Serial.println(topic);
+
+    String message;
+    for (int i = 0; i < length; i++)
+        message += (char)payload[i];
+
+    Serial.println("[Main Callback] Msg: " + message);
+
+    // Bạn có thể điều khiển trực tiếp ở đây
+    if (message == "ON")
+        digitalWrite(2, HIGH);
+    else if (message == "OFF")
+        digitalWrite(2, LOW);
+
+    // Hoặc gửi vào một Queue khác để xử lý ở task riêng nếu cần
 }
 
 // ================= TASK 1: ĐỌC PZEM (Core 1 - Ưu tiên 2) =================
@@ -97,22 +121,22 @@ void mqttTask(void *pv)
                     // Có data trong Queue thì mới nhảy vào switch case
                     switch (rxMsg.type)
                     {
-                        case TYPE_PZEM:
-                            mqtt.publishPzemData(rxMsg.pzem);
-                            Serial.printf("[MQTT] PZEM: %.1fV\n", rxMsg.pzem.voltage);
-                            break;
+                    case TYPE_PZEM:
+                        mqtt.publishPzemData(rxMsg.pzem);
+                        Serial.printf("[MQTT] PZEM: %.1fV\n", rxMsg.pzem.voltage);
+                        break;
 
-                        case TYPE_ENV_SENSOR:
-                            mqtt.publishData(rxMsg.env.temp, rxMsg.env.hum);
-                            Serial.printf("[MQTT] Env: T:%.1f H:%.1f\n", rxMsg.env.temp, rxMsg.env.hum);
-                            break;
+                    case TYPE_ENV_SENSOR:
+                        mqtt.publishData(rxMsg.env.temp, rxMsg.env.hum);
+                        Serial.printf("[MQTT] Env: T:%.1f H:%.1f\n", rxMsg.env.temp, rxMsg.env.hum);
+                        break;
 
-                        case TYPE_RF_REMOTE:
-                            Serial.printf("[MQTT] RF: %s\n", rxMsg.rf.code);
-                            break;
+                    case TYPE_RF_REMOTE:
+                        Serial.printf("[MQTT] RF: %s\n", rxMsg.rf.code);
+                        break;
 
-                        default:
-                            break;
+                    default:
+                        break;
                     }
                 }
             }
@@ -125,7 +149,7 @@ void mqttTask(void *pv)
         }
 
         // 3. Đảm bảo có một khoảng nghỉ nhỏ để không gây nghẽn Core 0 (WiFi Stack)
-        vTaskDelay(pdMS_TO_TICKS(100)); 
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -149,7 +173,8 @@ void setup()
     config.begin();
     wifi.begin(config);
     mqtt.setup(config);
-    //lcdModule.begin();
+    mqtt.setExternalCallback(onMqttMessage); // Đăng ký callback nhận tin nhắn MQTT
+    // lcdModule.begin();
 
     // Task xử lý phần cứng (PZEM và Sensor) chạy trên Core 1
     xTaskCreatePinnedToCore(pzemTask, "pzemTask", 3072, NULL, 2, NULL, 1);
@@ -159,11 +184,14 @@ void setup()
     xTaskCreatePinnedToCore(mqttTask, "mqttTask", 5120, NULL, 1, NULL, 0);
 
     // Test HTTP Client Module
-    if(wifi.isConnected()) {
+    if (wifi.isConnected())
+    {
         http.get("http://thanhcom1989.ddns.net:1880/api/getbyid/2", myDataHandler);
-    }   else {
+    }
+    else
+    {
         Serial.println("[HTTP] Cannot perform request, WiFi not connected.");
-    }   
+    }
 }
 
 void loop()

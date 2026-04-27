@@ -37,11 +37,15 @@ public:
 
         client.setServer(mqtt_server.c_str(), mqtt_port);
         client.setBufferSize(512);
-        client.setCallback(callback);
+        //client.setCallback(callback);
 
         Serial.println("[MQTT] Config loaded");
     }
 
+    void setExternalCallback(MQTT_CALLBACK_SIGNATURE) {
+        client.setCallback(callback);
+    }
+    /* =>Sử Dụng Callback main ko dùng
     static void callback(char* topic, byte* payload, unsigned int length) {
         Serial.print("\n[MQTT] Topic: ");
         Serial.println(topic);
@@ -53,7 +57,7 @@ public:
 
         if (message == "ON") digitalWrite(2, HIGH);
         else if (message == "OFF") digitalWrite(2, LOW);
-    }
+    }*/
 
     bool connect() {
         if (!client.connected()) {
