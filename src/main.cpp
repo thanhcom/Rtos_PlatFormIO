@@ -5,7 +5,8 @@
 #include "MqttModule.h"
 #include "DataModels.h"
 #include "PzemModule.h"
-#include "LcdModule.h"
+//#include "LcdModule.h"
+#include "HttpClientModule.h"
 
 // Khai báo Queue Handle để chuyển SystemMessage giữa các Task
 QueueHandle_t dataQueue;
@@ -16,8 +17,20 @@ MqttModule mqtt;
 ConfigManager config;
 PzemModule pzem(Serial1, 20, 21); // Sử dụng Serial1, chân RX:20, TX:21
 
-LiquidCrystal_I2C lcd(0x27, 16, 2); // Địa chỉ I2C: 0x27, số cột: 16, số hàng: 2
-LcdModule lcdModule(lcd);
+//LiquidCrystal_I2C lcd(0x27, 16, 2); // Địa chỉ I2C: 0x27, số cột: 16, số hàng: 2
+//LcdModule lcdModule(lcd);
+
+HttpClientModule http;
+
+// Hàm callback này sẽ được module gọi khi nhận xong data của HTTP Request
+void myDataHandler(const std::string& response, int statusCode) {
+    Serial.println("\n--- KẾT QUẢ HTTP ---");
+    if (statusCode == 200) {
+        Serial.printf("Dữ liệu: %s\n", response.c_str());
+    } else {
+        Serial.printf("Lỗi mẹ rồi! Code: %d\n", statusCode);
+    }
+}
 
 // ================= TASK 1: ĐỌC PZEM (Core 1 - Ưu tiên 2) =================
 void pzemTask(void *pv)
@@ -87,8 +100,8 @@ void mqttTask(void *pv)
                 {
                     mqtt.publishPzemData(rxMsg.pzem);
 
-                    snprintf(buf, sizeof(buf), "P:%.1fW", rxMsg.pzem.power);
-                    lcdModule.printAt(buf, 0, 0);
+                    //snprintf(buf, sizeof(buf), "P:%.1fW", rxMsg.pzem.power);
+                    //lcdModule.printAt(buf, 0, 0);
 
                     Serial.printf("[MQTT] PZEM: %.1fV\n", rxMsg.pzem.voltage);
                     break;
@@ -98,9 +111,9 @@ void mqttTask(void *pv)
                 {
                     mqtt.publishData(rxMsg.env.temp, rxMsg.env.hum);
 
-                    snprintf(buf, sizeof(buf), "T:%.1fC H:%.1f%%",
-                             rxMsg.env.temp, rxMsg.env.hum);
-                    lcdModule.printAt(buf, 1, 0);
+                    //snprintf(buf, sizeof(buf), "T:%.1fC H:%.1f%%",
+                    //         rxMsg.env.temp, rxMsg.env.hum);
+                    //lcdModule.printAt(buf, 1, 0);
 
                     Serial.printf("[MQTT] Env: T:%.1f H:%.1f\n",
                                   rxMsg.env.temp, rxMsg.env.hum);
@@ -109,8 +122,8 @@ void mqttTask(void *pv)
 
                 case TYPE_RF_REMOTE:
                 {
-                    snprintf(buf, sizeof(buf), "RF:%s", rxMsg.rf.code);
-                    lcdModule.printAt(buf, 0, 0);
+                    //snprintf(buf, sizeof(buf), "RF:%s", rxMsg.rf.code);
+                    //lcdModule.printAt(buf, 0, 0);
 
                     Serial.printf("[MQTT] RF: %s\n", rxMsg.rf.code);
                     break;
@@ -148,7 +161,7 @@ void setup()
     config.begin();
     wifi.begin(config);
     mqtt.setup(config);
-    lcdModule.begin();
+    //lcdModule.begin();
 
     // Task xử lý phần cứng (PZEM và Sensor) chạy trên Core 1
     xTaskCreatePinnedToCore(pzemTask, "pzemTask", 3072, NULL, 2, NULL, 1);
@@ -156,6 +169,13 @@ void setup()
 
     // Task xử lý truyền thông (WiFi/MQTT) chạy trên Core 0
     xTaskCreatePinnedToCore(mqttTask, "mqttTask", 5120, NULL, 1, NULL, 0);
+
+    // Test HTTP Client Module
+    if(wifi.isConnected()) {
+        http.get("http://thanhcom1989.ddns.net:1880/api/getbyid/2", myDataHandler);
+    }   else {
+        Serial.println("[HTTP] Cannot perform request, WiFi not connected.");
+    }   
 }
 
 void loop()
