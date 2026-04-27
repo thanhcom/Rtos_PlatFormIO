@@ -78,66 +78,54 @@ void sensorTask(void *pv)
 void mqttTask(void *pv)
 {
     SystemMessage rxMsg;
-    char buf[17];
-
+    // TickType_t để kiểm soát việc in Serial hoặc làm gì đó định kỳ nếu muốn
     Serial.println("[MQTT] Dispatcher Task started");
 
     for (;;)
     {
-        if (!xQueueReceive(dataQueue, &rxMsg, portMAX_DELAY))
-            continue;
-
         if (wifi.isConnected())
         {
-            // giữ nguyên logic cũ: connect mỗi lần
             if (mqtt.connect())
             {
+                // 1. CHÌA KHÓA: Luôn chạy loop đầu tiên để nhận lệnh ON/OFF ngay lập tức
                 mqtt.loop();
 
-                switch (rxMsg.type)
+                // 2. CHÌA KHÓA: Chỉ đợi Queue trong 100ms thôi.
+                // Nếu không có data thì thoát ra chạy tiếp vòng lặp (để lại gọi mqtt.loop)
+                if (xQueueReceive(dataQueue, &rxMsg, pdMS_TO_TICKS(100)))
                 {
-                case TYPE_PZEM:
-                {
-                    mqtt.publishPzemData(rxMsg.pzem);
+                    // Có data trong Queue thì mới nhảy vào switch case
+                    switch (rxMsg.type)
+                    {
+                        case TYPE_PZEM:
+                            mqtt.publishPzemData(rxMsg.pzem);
+                            Serial.printf("[MQTT] PZEM: %.1fV\n", rxMsg.pzem.voltage);
+                            break;
 
-                    //snprintf(buf, sizeof(buf), "P:%.1fW", rxMsg.pzem.power);
-                    //lcdModule.printAt(buf, 0, 0);
+                        case TYPE_ENV_SENSOR:
+                            mqtt.publishData(rxMsg.env.temp, rxMsg.env.hum);
+                            Serial.printf("[MQTT] Env: T:%.1f H:%.1f\n", rxMsg.env.temp, rxMsg.env.hum);
+                            break;
 
-                    Serial.printf("[MQTT] PZEM: %.1fV\n", rxMsg.pzem.voltage);
-                    break;
-                }
+                        case TYPE_RF_REMOTE:
+                            Serial.printf("[MQTT] RF: %s\n", rxMsg.rf.code);
+                            break;
 
-                case TYPE_ENV_SENSOR:
-                {
-                    mqtt.publishData(rxMsg.env.temp, rxMsg.env.hum);
-
-                    //snprintf(buf, sizeof(buf), "T:%.1fC H:%.1f%%",
-                    //         rxMsg.env.temp, rxMsg.env.hum);
-                    //lcdModule.printAt(buf, 1, 0);
-
-                    Serial.printf("[MQTT] Env: T:%.1f H:%.1f\n",
-                                  rxMsg.env.temp, rxMsg.env.hum);
-                    break;
-                }
-
-                case TYPE_RF_REMOTE:
-                {
-                    //snprintf(buf, sizeof(buf), "RF:%s", rxMsg.rf.code);
-                    //lcdModule.printAt(buf, 0, 0);
-
-                    Serial.printf("[MQTT] RF: %s\n", rxMsg.rf.code);
-                    break;
-                }
-
-                default:
-                    break;
+                        default:
+                            break;
+                    }
                 }
             }
         }
         else
         {
-            Serial.println("[MQTT] WiFi Disconnected. Packet dropped.");
+            // Mất WiFi thì nghỉ 1s cho đỡ tốn điện
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
         }
+
+        // 3. Đảm bảo có một khoảng nghỉ nhỏ để không gây nghẽn Core 0 (WiFi Stack)
+        vTaskDelay(pdMS_TO_TICKS(100)); 
     }
 }
 
